@@ -1,101 +1,137 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, nanoid } from '@reduxjs/toolkit';
+
+const loadTasksFromStorage = () => {
+  try {
+    const stored = localStorage.getItem('taskflow-tasks');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Check if tasks are from today
+      const today = new Date().toDateString();
+      if (parsed.date === today) {
+        return parsed.tasks;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load tasks from storage:', e);
+  }
+  return [];
+};
+
+const saveTasksToStorage = (tasks) => {
+  try {
+    const data = {
+      date: new Date().toDateString(),
+      tasks
+    };
+    localStorage.setItem('taskflow-tasks', JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save tasks to storage:', e);
+  }
+};
 
 const initialState = {
-  tasks: [],
-  columns: {
-    urgent: {
-      id: 'urgent',
-      title: 'Urgent',
-      taskIds: [],
-      color: 'red'
-    },
-    important: {
-      id: 'important',
-      title: 'Important',
-      taskIds: [],
-      color: 'yellow'
-    },
-    later: {
-      id: 'later',
-      title: 'Later',
-      taskIds: [],
-      color: 'blue'
-    }
-  },
-  columnOrder: ['urgent', 'important', 'later']
+  tasks: loadTasksFromStorage(),
+  filter: 'all' // all, active, completed
 };
 
 const taskSlice = createSlice({
   name: 'tasks',
   initialState,
   reducers: {
-    addTask: (state, action) => {
-      const { title, columnId } = action.payload;
-      const newTask = {
-        id: `task-${Date.now()}`,
-        title,
-        completed: false,
-        createdAt: new Date().toISOString()
-      };
-      state.tasks.push(newTask);
-      state.columns[columnId].taskIds.push(newTask.id);
+    addTask: {
+      reducer: (state, action) => {
+        state.tasks.push(action.payload);
+        saveTasksToStorage(state.tasks);
+      },
+      prepare: ({ title, priority = 'later' }) => ({
+        payload: {
+          id: nanoid(),
+          title,
+          priority,
+          completed: false,
+          createdAt: new Date().toISOString()
+        }
+      })
     },
     editTask: (state, action) => {
       const { id, title } = action.payload;
       const task = state.tasks.find(t => t.id === id);
       if (task) {
         task.title = title;
+        task.updatedAt = new Date().toISOString();
+        saveTasksToStorage(state.tasks);
       }
     },
     deleteTask: (state, action) => {
-      const taskId = action.payload;
-      state.tasks = state.tasks.filter(t => t.id !== taskId);
-      Object.values(state.columns).forEach(column => {
-        column.taskIds = column.taskIds.filter(id => id !== taskId);
-      });
+      state.tasks = state.tasks.filter(t => t.id !== action.payload);
+      saveTasksToStorage(state.tasks);
     },
     toggleComplete: (state, action) => {
-      const taskId = action.payload;
-      const task = state.tasks.find(t => t.id === taskId);
+      const task = state.tasks.find(t => t.id === action.payload);
       if (task) {
         task.completed = !task.completed;
+        task.completedAt = task.completed ? new Date().toISOString() : null;
+        saveTasksToStorage(state.tasks);
       }
     },
     moveTask: (state, action) => {
-      const { taskId, sourceColumnId, destinationColumnId, sourceIndex, destinationIndex } = action.payload;
-      
-      // Remove from source column
-      state.columns[sourceColumnId].taskIds.splice(sourceIndex, 1);
-      
-      // Add to destination column
-      state.columns[destinationColumnId].taskIds.splice(destinationIndex, 0, taskId);
+      const { taskId, newPriority } = action.payload;
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task && ['urgent', 'important', 'later'].includes(newPriority)) {
+        task.priority = newPriority;
+        task.updatedAt = new Date().toISOString();
+        saveTasksToStorage(state.tasks);
+      }
     },
-    reorderTask: (state, action) => {
-      const { columnId, sourceIndex, destinationIndex } = action.payload;
-      const column = state.columns[columnId];
-      const [removed] = column.taskIds.splice(sourceIndex, 1);
-      column.taskIds.splice(destinationIndex, 0, removed);
+    setFilter: (state, action) => {
+      state.filter = action.payload;
+    },
+    clearCompleted: (state) => {
+      state.tasks = state.tasks.filter(t => !t.completed);
+      saveTasksToStorage(state.tasks);
+    },
+    resetDailyTasks: (state) => {
+      state.tasks = [];
+      saveTasksToStorage(state.tasks);
     }
   }
 });
 
-export const { addTask, editTask, deleteTask, toggleComplete, moveTask, reorderTask } = taskSlice.actions;
+export const {
+  addTask,
+  editTask,
+  deleteTask,
+  toggleComplete,
+  moveTask,
+  setFilter,
+  clearCompleted,
+  resetDailyTasks
+} = taskSlice.actions;
 
 // Selectors
-export const selectTasksByColumn = (state, columnId) => {
-  const column = state.tasks.columns[columnId];
-  return column.taskIds.map(taskId => 
-    state.tasks.tasks.find(task => task.id === taskId)
-  ).filter(Boolean);
-};
-
 export const selectAllTasks = (state) => state.tasks.tasks;
 
-export const selectCompletionPercentage = (state) => {
+export const selectTasksByPriority = (priority) => (state) =>
+  state.tasks.tasks.filter(task => task.priority === priority);
+
+export const selectFilteredTasks = (state) => {
+  const { tasks, filter } = state.tasks;
+  switch (filter) {
+    case 'active':
+      return tasks.filter(t => !t.completed);
+    case 'completed':
+      return tasks.filter(t => t.completed);
+    default:
+      return tasks;
+  }
+};
+
+export const selectCompletionStats = (state) => {
   const tasks = state.tasks.tasks;
-  if (tasks.length === 0) return 0;
+  const total = tasks.length;
   const completed = tasks.filter(t => t.completed).length;
-  return Math.round((completed / tasks.length) * 100);
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return { total, completed, percentage };
 };
 
 export default taskSlice.reducer;
