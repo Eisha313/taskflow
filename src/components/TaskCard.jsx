@@ -1,162 +1,116 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useContext } from 'react';
 import { useDispatch } from 'react-redux';
-import { editTask, deleteTask, toggleComplete } from '../store/taskSlice';
-import { useDragDrop } from '../context/DragDropContext';
+import { toggleComplete, deleteTask } from '../store/taskSlice';
+import { DragDropContext } from '../context/DragDropContext';
 
-const TaskCard = ({ task }) => {
+const priorityColors = {
+  urgent: 'border-l-red-500 bg-red-50 hover:bg-red-100',
+  important: 'border-l-yellow-500 bg-yellow-50 hover:bg-yellow-100',
+  later: 'border-l-blue-500 bg-blue-50 hover:bg-blue-100'
+};
+
+const checkboxColors = {
+  urgent: 'text-red-500 focus:ring-red-500',
+  important: 'text-yellow-500 focus:ring-yellow-500',
+  later: 'text-blue-500 focus:ring-blue-500'
+};
+
+export default function TaskCard({ task, onEdit }) {
   const dispatch = useDispatch();
-  const { handleDragStart, handleDragEnd, draggedTask } = useDragDrop();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState(task.title);
-  const inputRef = useRef(null);
+  const { setDraggedTask } = useContext(DragDropContext);
 
-  const isDragging = draggedTask?.id === task.id;
+  const handleDragStart = (e) => {
+    setDraggedTask(task);
+    e.dataTransfer.effectAllowed = 'move';
+    e.target.classList.add('opacity-50', 'scale-95');
+  };
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
+  const handleDragEnd = (e) => {
+    setDraggedTask(null);
+    e.target.classList.remove('opacity-50', 'scale-95');
+  };
 
-  // Sync edit title when task changes
-  useEffect(() => {
-    if (!isEditing) {
-      setEditTitle(task.title);
-    }
-  }, [task.title, isEditing]);
-
-  const handleToggleComplete = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleToggleComplete = () => {
     dispatch(toggleComplete(task.id));
   };
 
-  const handleDelete = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (window.confirm('Delete this task?')) {
-      dispatch(deleteTask(task.id));
-    }
-  };
-
-  const handleDoubleClick = (e) => {
-    e.preventDefault();
-    if (!task.completed) {
-      setIsEditing(true);
-    }
-  };
-
-  const handleSaveEdit = () => {
-    const trimmedTitle = editTitle.trim();
-    if (trimmedTitle && trimmedTitle !== task.title) {
-      dispatch(editTask({ id: task.id, title: trimmedTitle }));
-    } else {
-      setEditTitle(task.title);
-    }
-    setIsEditing(false);
-  };
-
-  const handleCancelEdit = () => {
-    setEditTitle(task.title);
-    setIsEditing(false);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSaveEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      handleCancelEdit();
-    }
-  };
-
-  const onDragStart = (e) => {
-    if (isEditing) {
-      e.preventDefault();
-      return;
-    }
-    handleDragStart(task, e);
+  const handleDelete = () => {
+    dispatch(deleteTask(task.id));
   };
 
   return (
     <div
-      draggable={!isEditing}
-      onDragStart={onDragStart}
+      draggable
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={`
-        group bg-white rounded-lg shadow-sm border border-gray-200 p-3
-        transition-all duration-200 cursor-grab active:cursor-grabbing
-        hover:shadow-md hover:border-gray-300
-        ${isDragging ? 'opacity-50 scale-95 rotate-2' : ''}
-        ${task.completed ? 'bg-gray-50 opacity-75' : ''}
+        p-3 rounded-lg border-l-4 cursor-grab active:cursor-grabbing
+        transition-all duration-200 ease-in-out
+        transform hover:scale-[1.02] hover:shadow-md
+        ${priorityColors[task.priority]}
+        ${task.completed ? 'opacity-60' : ''}
       `}
     >
       <div className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={handleToggleComplete}
+        <input
+          type="checkbox"
+          checked={task.completed}
+          onChange={handleToggleComplete}
           className={`
-            flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 
-            transition-all duration-200 flex items-center justify-center
-            ${task.completed 
-              ? 'bg-green-500 border-green-500 text-white' 
-              : 'border-gray-300 hover:border-green-400'
-            }
+            mt-1 h-4 w-4 rounded border-gray-300
+            transition-colors duration-150
+            ${checkboxColors[task.priority]}
           `}
-          aria-label={task.completed ? 'Mark as incomplete' : 'Mark as complete'}
-        >
-          {task.completed && (
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-          )}
-        </button>
-
+        />
         <div className="flex-1 min-w-0">
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              onBlur={handleSaveEdit}
-              onKeyDown={handleKeyDown}
-              className="w-full px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              maxLength={100}
-            />
-          ) : (
+          <h4
+            className={`
+              font-medium text-gray-800 truncate
+              transition-all duration-200
+              ${task.completed ? 'line-through text-gray-500' : ''}
+            `}
+          >
+            {task.title}
+          </h4>
+          {task.description && (
             <p
-              onDoubleClick={handleDoubleClick}
               className={`
-                text-sm text-gray-700 break-words
+                text-sm text-gray-600 mt-1 line-clamp-2
+                transition-all duration-200
                 ${task.completed ? 'line-through text-gray-400' : ''}
               `}
-              title="Double-click to edit"
             >
-              {task.title}
+              {task.description}
             </p>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="
-            flex-shrink-0 opacity-0 group-hover:opacity-100
-            text-gray-400 hover:text-red-500 transition-all duration-200
-            p-1 rounded hover:bg-red-50
-          "
-          aria-label="Delete task"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={() => onEdit(task)}
+            className="
+              p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-100
+              rounded-md transition-all duration-150
+            "
+            title="Edit task"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            onClick={handleDelete}
+            className="
+              p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-100
+              rounded-md transition-all duration-150
+            "
+            title="Delete task"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
-};
-
-export default TaskCard;
+}

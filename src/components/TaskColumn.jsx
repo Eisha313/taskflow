@@ -1,61 +1,108 @@
-import { useDrop } from 'react-dnd'
-import { useDispatch } from 'react-redux'
-import { moveTask } from '../store/taskSlice'
-import TaskCard from './TaskCard'
+import { useContext, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { moveTask } from '../store/taskSlice';
+import { DragDropContext } from '../context/DragDropContext';
+import TaskCard from './TaskCard';
 
-const colorClasses = {
-  red: 'border-red-400 bg-red-50',
-  yellow: 'border-yellow-400 bg-yellow-50',
-  blue: 'border-blue-400 bg-blue-50'
-}
+const columnConfig = {
+  urgent: {
+    title: '🔥 Urgent',
+    headerBg: 'bg-red-500',
+    dropBg: 'bg-red-100 border-red-300',
+    emptyText: 'No urgent tasks'
+  },
+  important: {
+    title: '⭐ Important',
+    headerBg: 'bg-yellow-500',
+    dropBg: 'bg-yellow-100 border-yellow-300',
+    emptyText: 'No important tasks'
+  },
+  later: {
+    title: '📋 Later',
+    headerBg: 'bg-blue-500',
+    dropBg: 'bg-blue-100 border-blue-300',
+    emptyText: 'No tasks for later'
+  }
+};
 
-const headerColors = {
-  red: 'text-red-700 bg-red-100',
-  yellow: 'text-yellow-700 bg-yellow-100',
-  blue: 'text-blue-700 bg-blue-100'
-}
+export default function TaskColumn({ priority, tasks, onEditTask }) {
+  const dispatch = useDispatch();
+  const { draggedTask } = useContext(DragDropContext);
+  const [isDragOver, setIsDragOver] = useState(false);
 
-export default function TaskColumn({ id, title, color, tasks }) {
-  const dispatch = useDispatch()
+  const config = columnConfig[priority];
 
-  const [{ isOver, canDrop }, drop] = useDrop(() => ({
-    accept: 'TASK',
-    drop: (item) => {
-      if (item.priority !== id) {
-        dispatch(moveTask({ taskId: item.id, newPriority: id }))
-      }
-    },
-    collect: (monitor) => ({
-      isOver: monitor.isOver(),
-      canDrop: monitor.canDrop()
-    })
-  }), [id, dispatch])
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
 
-  const isActive = isOver && canDrop
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    if (draggedTask && draggedTask.priority !== priority) {
+      dispatch(moveTask({ taskId: draggedTask.id, newPriority: priority }));
+    }
+  };
 
   return (
     <div
-      ref={drop}
-      className={`rounded-lg border-2 p-4 min-h-[400px] transition-all duration-200 ${
-        colorClasses[color]
-      } ${isActive ? 'ring-2 ring-offset-2 ring-gray-400 scale-[1.02]' : ''}`}
+      className={`
+        flex flex-col bg-white rounded-xl shadow-sm
+        border-2 transition-all duration-300 ease-in-out
+        ${isDragOver ? `${config.dropBg} scale-[1.02] shadow-lg` : 'border-gray-100'}
+      `}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      <div className={`rounded-md px-3 py-2 mb-4 ${headerColors[color]}`}>
-        <h2 className="font-semibold text-lg">{title}</h2>
-        <span className="text-sm opacity-75">{tasks.length} tasks</span>
+      <div className={`
+        ${config.headerBg} text-white px-4 py-3 rounded-t-lg
+        font-semibold text-center
+      `}>
+        <span className="text-lg">{config.title}</span>
+        <span className="
+          ml-2 bg-white/20 px-2 py-0.5 rounded-full text-sm
+          transition-all duration-200
+        ">
+          {tasks.length}
+        </span>
       </div>
-
-      <div className="space-y-3">
-        {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
-        ))}
+      
+      <div className="flex-1 p-3 space-y-3 min-h-[200px] max-h-[60vh] overflow-y-auto">
+        {tasks.length === 0 ? (
+          <div className={`
+            flex items-center justify-center h-32
+            text-gray-400 text-sm italic
+            border-2 border-dashed rounded-lg
+            transition-all duration-300
+            ${isDragOver ? 'border-gray-400 bg-gray-50' : 'border-gray-200'}
+          `}>
+            {isDragOver ? 'Drop here!' : config.emptyText}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tasks.map((task, index) => (
+              <div
+                key={task.id}
+                className="group"
+                style={{
+                  animation: `fadeSlideIn 0.3s ease-out ${index * 0.05}s both`
+                }}
+              >
+                <TaskCard task={task} onEdit={onEditTask} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {tasks.length === 0 && (
-        <div className="text-center text-gray-400 py-8">
-          <p>Drop tasks here</p>
-        </div>
-      )}
     </div>
-  )
+  );
 }
